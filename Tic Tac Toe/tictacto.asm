@@ -1019,7 +1019,7 @@ POINT					;We have a winner!
 
 		LDA SCR1,Y		;Add one point to winners score.
 		CLC			;How i wish 6502 had a INC address,Y
-		ADC #1			; instructoin...
+		ADC #1			; instruction...
 		STA SCR1,Y		;
 
 		LDA TEMP
