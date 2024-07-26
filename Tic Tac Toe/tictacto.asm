@@ -319,7 +319,7 @@ CONFIG
 					;are not counted when computing the
 					;ROM checksum.
 
-MAXWIN		.byte 2		;This many wins ends game.  Anything
+MAXWIN		.byte 10		;This many wins ends game.  Anything
 					;more than 10 is not supported by the
 					;graphics currently.
 
@@ -1770,40 +1770,42 @@ BURNLINES	STA WSYNC
 ;------------------------------------------------------------------------------
 		;Subroutines
 
-MKSOUND		;Sets sound driver variables to produce a sound
+MKSOUND		;Sets sound driver variables to produce a sound.
 		;Sound number in .Y
-                LDA SNDTABL,Y
-                STA SNDPTR
-                LDA SNDTABH,Y
-               	STA SNDPTR+1
-		JMP NEWSND
+                LDA SNDTABL,Y		;Use .Y as an index into the pointer
+                STA SNDPTR		; tables and put it in SNDPTR.
+                LDA SNDTABH,Y		;SNDPTR+1 being nonzero will make
+               	STA SNDPTR+1		; SNDDRV process sound units.
+		JMP NEWSND		;Riding SNDDRV's coattails.
                 
-SNDDRV		LDA SNDPTR+1
+		;Sound driver.
+		;Called each frame from main loop before overscan handler.
+SNDDRV		LDA SNDPTR+1		;if no sound is active do nothing.
 		BNE PLAYING
        		RTS
                 
-PLAYING         DEC SNDTIM
-		BNE SUSTAIN
+PLAYING         DEC SNDTIM		;If this sound still has frames left,
+		BNE SUSTAIN		; then just keep on.
                 
-                INC SNDPTR
-                INC SNDPTR
-                INC SNDPTR
-NEWSND          LDY #0
+                INC SNDPTR		;Check next sound unit.  We are on
+                INC SNDPTR		; the current sound unit, so we move
+                INC SNDPTR		; forward our unit length of 3 bytes.
+NEWSND          LDY #0			;Peek at first byte.
                 LDA (SNDPTR),Y
-                BNE NEXTNOTE
+                BNE NEXTNOTE		;Non-zero means another sound unit.
                 
-                STY SNDPTR+1
-                STY AUDV0
-                RTS
+                STY SNDPTR+1		;Zero means end of sound.  Kill audio
+                STY AUDV0		; and set SNDPTR+1 to 0 to indicate no
+                RTS			; sound is playing.
                 
-NEXTNOTE	STA AUDF0
-		INY
+NEXTNOTE	STA AUDF0		;Program TIA sound registers according
+		INY			; to our precious sound unit bytes.
                	LDA (SNDPTR),Y
                 STA AUDC0
                 INY
-                LDA (SNDPTR),Y            
-                STA SNDTIM
-                LDA #$FF
+                LDA (SNDPTR),Y		;3rd byte of sound unit is the number
+                STA SNDTIM		; of frames.
+                LDA #$FF		;Pump up the volume.
                 STA AUDV0
                 
 SUSTAIN
@@ -2063,22 +2065,28 @@ ROMCHECKX
                 ;*** Must be page aligned!
 		org $FD00
                 
+		;Basically, each unit of sound data is 3 bytes.  
+		; First byte: goes into AUDF0 - frequency.
+		;Second byte: goes into AUDC0 - tone.
+		; Third byte: how many screenframes until next unit is checked.
+		;          0: ends the sound.
+
 SNDTABL		.byte <SOUND0,<SOUND1,<SOUND2,<SOUND3,<SOUND4,<SOUND5,<SOUND6		
 SNDTABH		.byte >SOUND0,>SOUND1,>SOUND2,>SOUND3,>SOUND4,>SOUND5,>SOUND6
 		;Bad move
-SOUND0		.byte 8, 6,8, 0
+SOUND0		.byte  8, 6, 8,  0
 		;P1 move
-SOUND1		.byte 4, 6,2, 3, 7,2, 0
+SOUND1		.byte  4, 6, 2,  3, 7  2,  0
 		;P2 move
-SOUND2		.byte 2, 6,2, 1, 7,2, 0
+SOUND2		.byte  2, 6, 2,  1, 7, 2,  0
 		;Win
-SOUND3		.byte 8,10,3, 6,10,4, 4,10,5, 2,10,6, 1,10,3, 0
+SOUND3		.byte  8,10, 3,  6,10, 4,  4,10, 5,  2,10, 6,  1,10, 3,  0
 		;Draw
-SOUND4		.byte 1,12,6, 4,10,5, 5,12,6, 9,10,5, 1,12,4, 0                
+SOUND4		.byte  1,12, 6,  4,10, 5,  5,12, 6,  9,10, 5,  1,12, 4,  0                
 		;Move piece
-SOUND5		.byte 2,12,2, 1,12,1, 0 
+SOUND5		.byte  2,12, 2,  1,12, 1,  0 
 		;End game
-SOUND6		.byte 2,13,3, 3,13,4, 4,13,5, 5,13,7, 6,13,10, 0             
+SOUND6		.byte  2,13, 3,  3,13, 4,  4,13, 5,  5,13, 7,  6,13,10,  0             
 
 ;------------------------------------------------------------------------------
 		;*** Graphics
