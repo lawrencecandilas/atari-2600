@@ -51,7 +51,6 @@ Just in case you don't know how to play Tic-Tac-Toe:
 - You are either X or O, X always moves first.
 - You and the other player take turns placing your symbol in one of 9 squares on a 3x3 grid.  
 - If you get 3 in a row, you win a point and get to be X the next round.
-- 
 - If all 9 squares get full with neither player getting 3 in a row, the match is a draw and is replayed until someone does get 3 in a row.
 - First player to get 10 or more points wins the game.
 
