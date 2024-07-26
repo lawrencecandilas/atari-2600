@@ -1,5 +1,9 @@
 # Tic-Tac-Toe on the Atari 2600
 
+![Screenshot 1](https://github.com/lawrencecandilas/atari-2600/blob/main/Tic%20Tac%20Toe/Screenshot-01.png?raw=true)
+
+![Screenshot 2](https://github.com/lawrencecandilas/atari-2600/blob/main/Tic%20Tac%20Toe/Screenshot-02.png?raw=true)
+
 ## History
 
 Most of this stems from initial code written in 2004 when I first found
@@ -12,8 +16,10 @@ the game code doesn't occupy much space, I decided to be silly and include a
 setting the screen colors, selecting the CPU strategy routine, and turning
 the sound on and off.
 
-I've streamlined and taken all that out.  This is just the game - well, it
-does have a BRK handler and a ROM checksum routine. :P
+Well, it's 2024 now.  I've streamlined and taken all that out.  This is just
+the game - well, it does have a BRK handler and a ROM checksum routine. :P
+
+Sound is now working.
 
 ## Development
 
@@ -35,11 +41,12 @@ the IDE window and immediately see the game running.
 
 So I decided to clean it up and finish it.
 
-Not yet tested on a real Atari 2600.  Well tested in Javatari and somewhat in Z26.
+Not yet tested on a real Atari 2600.  Well tested in Javatari and somewhat
+in Z26.
 
 ## How To Play
 
-If you don't know how to play Tic-Tac-Toe: 
+Just in case you don't know how to play Tic-Tac-Toe: 
 
 - You are either X or O, X always moves first.
 - You and the other player take turns placing your symbol in one of 9 squares on a 3x3 grid.  
