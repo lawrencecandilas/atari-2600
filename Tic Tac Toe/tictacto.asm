@@ -241,6 +241,8 @@ PHASE	= $B0				;Phase of mode
 					;into PHASES that fit into vertical
 					;blank time for sure.
 
+CHKPTR	= $B1				;16-bit pointer for ROMCHECK
+
 SCR1	= $B1				;Score player 1
 SCR2	= $B2				;Score player 2
 
@@ -283,13 +285,11 @@ BOUNCE2 = $CC				;Another delay counter.
 
 WINNER	= $CD				;Who the winner is (0 or 1)
 
-WINPOS1	= $CE				;These contain the position of the
-WINPOS2	= $CF				;winning pieces on the board.  When
-WINPOS3 = $E0				;the winner is declared, this is so we
-					;can make the winner flash
+WPSPTR  = $CE
+WPSTACK = $CF
 
-SNDPHA	= $E1				;Current sound effect phase
-SNDFRE	= $E2				;Current sound effect frequency
+SNDPTR  = $E0				;Current sound data address 
+SNDTIM	= $E2				;Timer of current sound data
 
 CRASH   = $E3				;used to prevent infinite loops
 
@@ -307,7 +307,9 @@ INTLEV	= $E5				;How smart the CPU is - e.g. a random
 					;otherwise the CPU simply selects a
 					;random open square.
                                         
-CHKSUM  = $E5				;Holds ROM checksum when computed.
+CHKSUM  = $E6				;Holds ROM checksum when computed.
+
+ATIMER	= $E7				;Times color cycles in idle modes
 
 		org $F000
 ;----------------------------------------------------------------------------------------------------
@@ -317,11 +319,11 @@ CONFIG
 					;are not counted when computing the
 					;ROM checksum.
 
-MAXWIN		.byte 10		;This many wins ends game.  Anything
+MAXWIN		.byte 2		;This many wins ends game.  Anything
 					;more than 10 is not supported by the
 					;graphics currently.
 
-GOOD		.byte 88		;ROM checksum should match this.
+GOOD		.byte 174		;ROM checksum should match this.
 
 CFGBGC		.byte 7			;Colors (for color and B&W modes).
 CFGBCGCOL	.byte 44
@@ -380,7 +382,7 @@ ZPCLEAR 	STA 0,X
 					;		update P0 content
 					;		   here
 
-		STA AUDV0		;kill all audio
+                STA AUDV0		;kill all audio
 		STA AUDC0
 		STA AUDF0
 
@@ -456,9 +458,9 @@ ZPCLEAR 	STA 0,X
 		;ROM check service mode screen.
                 LDA SWCHB
                 AND #%00000011
-                BNE SETUP2
-                					
+                BNE SETUP2              
                 JMP ROMCHECK                                
+                
 SETUP2
 		LDA #<TITLE		;Set up my dinky little title screen,
 		STA TEMP3		;and initialize all GPTR's as well.
@@ -474,7 +476,7 @@ SETUP2
 		LDA #<TOPO
 		STA TOPR
 		LDA #>TOPO
-		STA TOPRH                             
+		STA TOPRH                            
                 
                 ;Fall into main loop
 ;----------------------------------------------------------------------------------------------------
@@ -483,9 +485,10 @@ MAIN		;Main loop
 		JSR VBLANKH		;Do vertical blank + check console switches
 		JSR CONSOLEH		
 		JSR GameCalc      	;Do calculations during VBlank
+                JSR SNDDRV		;Process sound
 		JSR SCREENH		;Draw the screen
-		JSR OVERSCANH      	;Do more calculations during overscan
-		JMP MAIN                     
+		JSR OVERSCANH      	;Do more calculations during overscan	
+                JMP MAIN                     
 		
 ;-----------------------------------------------------------------------------
 BRKH		
@@ -590,6 +593,8 @@ CSELECT		LDA #0			;Yeah, it was SELECT.
 		JSR CYCLE		;Shift colors to provide further visual
 					; feedback of switch press.
 					;Many old Atari games do this.
+                LDA #$FF                ;... and reset our timer too.
+                STA ATIMER
 
 		INC CURGAM		;Increase current game by 1
 		LDA CURGAM
@@ -635,7 +640,11 @@ GameCalc 	;Game logic
 		;*** MODE=0: Select Game 
 
 GAMSEL		JSR NEXTRAND		;Cycle RNG.
-		
+
+		DEC ATIMER		;This is an idle mode, so we'll flip
+                BNE NOCYCLE1		; colors.
+                JSR CYCLE
+NOCYCLE1		
 		LDY CURGAM		;Sets top GPTR's to display what the
 		LDA GL1,Y		; currently selected game is.
 		STA TEMP
@@ -833,8 +842,8 @@ MOVEC
 		RTS 
 MOVEC2
 		;Process cursor move request
-		LDA #7			;Begin keyclick.
-		STA AUDF1
+		LDY #5			;Keyclick
+		JSR MKSOUND
 
 		LDA TEMP		;Get stored joystick read.
 
@@ -906,19 +915,18 @@ MOVEX
 		LDA #10			;Reset bounce.
 		STA BOUNCE
 		JSR RESBLNK
-
-		LDA #0			;End keyclick.
-		STA AUDV1
-
-		RTS
+                RTS
 
 		;Handle when joystick button is pressed.
 TRIGGER		
 		LDY CURSOR
 		LDA GRID,Y		;Get character at cursor position.
 		CMP #CSPC		;Is it a space (empty)?
-		BNE MOVEX		;Space is occupied so let's ignore
-					; this illegal request.
+                BEQ MOVEHERE		;All right then let's take it.
+                
+                LDY #0			;Otherwise play an error sound.
+                JSR MKSOUND
+                JMP MOVEX
 
 MOVEHERE	;When the CPU decides what square to move at (the square will
 		; be in the CURSOR variable), entering here will place the X
@@ -926,9 +934,6 @@ MOVEHERE	;When the CPU decides what square to move at (the square will
 
 		STY TEMP
 		PHA		
-
-		LDY #2
-		JSR MKSOUND		
 
 		PLA
 		LDY TEMP
@@ -940,6 +945,7 @@ MOVEHERE	;When the CPU decides what square to move at (the square will
 		EOR XFLAG
 		AND #%00000001
 		CLC
+                                
 		ADC #CXCHAR
 				
 		STA GRID,Y
@@ -951,6 +957,10 @@ MOVEHERE	;When the CPU decides what square to move at (the square will
 		JSR SETCHAR
 
 		JSR INTCRSR		;Reinitialize cursor for next player.
+
+		LDY CP
+                INY
+                JSR MKSOUND 
 
 		INC CP	
 		LDA CP
@@ -978,37 +988,65 @@ CHECK		;Allright, let's get inter-move delays out of the way.
 		RTS
 
 WINCHK          ;OK, let's check for a win.
+
+		LDA #0			;Initalize our winner position stack
+		STA WPSPTR		; pointer.
+
 		LDX #7
 WINCHK1
-		LDA WINTAB1,X		;Get first position of row/column/
+		LDY WINTAB1,X		;Get first position of row/column/
 					; diagonal we're checking...
-		STA WINPOS1		;(we store the winning positions so we 
-					; can flash them just in case we do
-					; have a 3-in-a-row.)
-		TAY
 		LDA GRID,Y		;Get what's in the square ...
 		CMP #CSPC		; if it's a space ...
 		BEQ WINCHKL		; then it can't be a win and we can
 					; forget it ...
 		STA TEMP		;Otherwise, save it ...
-		LDA WINTAB2,X		;Get middle position of row/column/
+		LDY WINTAB2,X		;Get middle position of row/column/
 					; diagonal we're checking...
-		STA WINPOS2
-		TAY
 		LDA GRID,Y		;Get what's in that square...
 		CMP TEMP		;Let's compare the first two squares...
-		BNE WINCHKL		;Mot the same then it's not a win...
-		LDA WINTAB3,X		;Get third position of row/column/
+		BNE WINCHKL		;Not the same then it's not a win...
+		LDY WINTAB3,X		;Get third position of row/column/
 					; diagonal we're checking...
-		STA WINPOS3
-		TAY
 		LDA GRID,Y		;and get what's in that square...
 		CMP TEMP		;Is it the same as the other two?
 		BNE WINCHKL		;Nope, no winner in this row/column/
 					; diagonal.
 
-POINT					;We have a winner!
-                LDA TEMP        	;Figure out which side won...        
+POINT		;Found a three-in-a-row.
+		;(There might be two so we do a stack thing here.)
+		;Add positions to our win position stack (WPSTACK).
+		LDY WPSPTR
+		LDA WINTAB1,X
+		STA WPSTACK,Y
+		INY
+		LDA WINTAB2,X
+		STA WPSTACK,Y
+		INY
+		LDA WINTAB3,X
+		STA WPSTACK,Y
+		INY
+		STY WPSPTR
+
+WINCHKL		DEX
+		BPL WINCHK1	
+
+		;We've checked all possible three-in-a-rows.
+		;Did we find any?  WPSPTR won't be 0 if we did.
+		LDA WPSPTR
+		BEQ CHECK0
+
+		;Winner detected!	
+                ;Make noise
+                LDY #3
+                JSR MKSOUND
+                
+                ;Ok ... who won?
+                LDY WPSTACK        	;Let's look at one of the pieces we'll           
+                LDA GRID,Y		; be blinking ...
+                STA WINNER              ;identify winner for WINFLASH routine
+					; in MATCHWIN.
+               
 		CLC
 		ADC XFLAG
 		AND #%00000001		
@@ -1021,21 +1059,14 @@ POINT					;We have a winner!
 		CLC			;How i wish 6502 had a INC address,Y
 		ADC #1			; instruction...
 		STA SCR1,Y		;
-
-		LDA TEMP
-		STA WINNER		;identify winner for WINFLASH routine
-					; in MATCHWIN.
-
+                
 		LDA #128
 		STA BOUNCE2
 		LDA #5
                 STA PHASE               ;done here, switch to MATCHWIN routine
 					; next frame...
                 RTS                     ;...after which MATCHWIN dumps us back
-					; into CHECK.
-
-WINCHKL		DEX
-		BPL WINCHK1					
+					; into CHECK.				
 
 CHECK0		;ok, now, let's check if there's a win/draw on the match
 		;(it's important to do this AFTER we check for 3 in a row!)
@@ -1048,6 +1079,8 @@ CHECK0		;ok, now, let's check if there's a win/draw on the match
 					;Because we already checked for
 					; 3-in-a-row's.
 					;So, if it is a draw...
+		LDY #4			; make the draw noise.
+                JSR MKSOUND             
 		JSR SETUP1		; new board.
 	
 ENDCHK					;Check if game is over
@@ -1076,18 +1109,6 @@ NOWINYET				;...otherwise we keep going.
 		STA PHASE
 		RTS
 		
-;DRAW					;this declares the game a draw
-;		LDY #12
-;		LDX #CSPC		;space character
-;		JSR SETCHAR
-;		LDY #13
-;		LDX #CTIE		;TIE character
-;		JSR SETCHAR
-;		LDY #14
-;		LDX #CSPC		;space character
-;		JSR SETCHAR
-;		JMP ENDGAME
-
 P1WIN					;this declares player 1 the winner
 		LDY #0
 		JMP P1WC
@@ -1102,7 +1123,10 @@ ENDGAME
 		JSR CYCLE		;This cycles the colors at this point
 					;Some old Atari games cycle the colors
 					; when the game ends so I did it to.
-
+		LDA #$FF		;Prepare color cycle delay for OVER.
+                STA ATIMER	
+                LDY #6			;Ending sound.
+                JSR MKSOUND
 		RTS			;thank you for playing Tic-Tac-Toe!
 
 		;**************************************************************
@@ -1110,7 +1134,10 @@ ENDGAME
 		;Basically, do nothing until user decides to press GAME RESET
 		; to start a new game.
 
-OVER		RTS
+OVER		DEC ATIMER
+		BNE OVERX             
+		JSR CYCLE
+OVERX		RTS
 
 		;**************************************************************
 		;*** MODE=1, PHASE=5: Show Winner Of Match
@@ -1134,46 +1161,34 @@ WINFLASH
 		BEQ WINFOFF
 
 WINFON		
-		LDY WINPOS1
-		INY
-		INY
-		INY
+		LDX WPSPTR
+WINFONL		DEX
+		BMI WINFONX
+		LDY WPSTACK,X
+                INY			;Add 3 because WPSTACK refers to grid 
+                INY			; positions but SETCHAR wants screen
+                INY			; positions (first 3 are score area).
+		TXA
 		LDX WINNER
 		JSR SETCHAR
-		LDY WINPOS2
-		INY
-		INY
-		INY
-		LDX WINNER
-		JSR SETCHAR
-		LDY WINPOS3
-		INY
-		INY
-		INY
-		LDX WINNER
-		JSR SETCHAR
-		RTS
+		TAX
+		JMP WINFONL
+WINFONX		RTS		
 
 WINFOFF		
-		LDY WINPOS1
-		INY
-		INY
-		INY
+		LDX WPSPTR
+WINFOFFL	DEX
+		BMI WINFOFFX
+		LDY WPSTACK,X
+                INY
+                INY
+                INY
+		TXA
 		LDX #CSPC
 		JSR SETCHAR
-		LDY WINPOS2
-		INY
-		INY
-		INY
-		LDX #CSPC
-		JSR SETCHAR
-		LDY WINPOS3
-		INY
-		INY
-		INY
-		LDX #CSPC
-		JSR SETCHAR
-		RTS
+		TAX
+		JMP WINFOFFL
+WINFOFFX	RTS	
 		
 		;**************************************************************
 		;*** MODE=1, PHASE=3: Get And Execute Move for a CPU Player
@@ -1380,7 +1395,7 @@ OBX		RTS
 
 ;------------------------------------------------------------------------------
 SCREENH 	;*** SCREEN DRAWING HANDLER
-		;Draws a frame
+		;Draws a frame              
 		LDA INTIM		;is it time to draw the screen yet?
 		BNE SCREENH		;if not then wait
 		STA WSYNC
@@ -1739,10 +1754,10 @@ SHL5					;draw bottom score area
 ;------------------------------------------------------------------------------
 OVERSCANH 	;*** OVERSCAN HANDLER
 		LDA #0			;make sure overscan has no colors
-		STA COLUP0		;so it won't look weird on emulators
+		STA COLUBK		; so it won't look weird on emulators
+                STA COLUP0
 		STA COLUP1
 		STA COLUPF
-		STA COLUBK
 		STA WSYNC
 
 		LDX #35
@@ -1757,8 +1772,42 @@ BURNLINES	STA WSYNC
 
 MKSOUND		;Sets sound driver variables to produce a sound
 		;Sound number in .Y
-		
-MKSOUNDX	RTS
+                LDA SNDTABL,Y
+                STA SNDPTR
+                LDA SNDTABH,Y
+               	STA SNDPTR+1
+		JMP NEWSND
+                
+SNDDRV		LDA SNDPTR+1
+		BNE PLAYING
+       		RTS
+                
+PLAYING         DEC SNDTIM
+		BNE SUSTAIN
+                
+                INC SNDPTR
+                INC SNDPTR
+                INC SNDPTR
+NEWSND          LDY #0
+                LDA (SNDPTR),Y
+                BNE NEXTNOTE
+                
+                STY SNDPTR+1
+                STY AUDV0
+                RTS
+                
+NEXTNOTE	STA AUDF0
+		INY
+               	LDA (SNDPTR),Y
+                STA AUDC0
+                INY
+                LDA (SNDPTR),Y            
+                STA SNDTIM
+                LDA #$FF
+                STA AUDV0
+                
+SUSTAIN
+                RTS
 
 SETCHAR		;Sets current position in .Y (0-14) to character in .X
 		PHP
@@ -1909,7 +1958,7 @@ CLRSCN
                 BNE CLRSCN
                 
 		JSR SVCSCR                         
-                      		                
+                   
 		LDA #<CHARSPC		;initialize top graphics pointers...
 		STA TOPL
 		STA TOPR
@@ -1917,7 +1966,7 @@ CLRSCN
 		STA TOPLH
 		STA TOPRH
 
-                LDA #2			;Set mode to 2 so SERVIC is called in
+                LDA #$02		;Set mode to 2 so SERVIC is called in
 					; the main loop
                 STA MODE
                 
@@ -1933,7 +1982,7 @@ SVCSCR		;.A should be the number to display.
 		;Basically this will convert the value in .A to individual
 		; digits and set the GPTRs accordingly, using SETCHAR.
 
-        	LDX #0
+                LDX #0
 		
 HUND		CMP #100
                 BCC TENS
@@ -1959,18 +2008,20 @@ ONES            LDY #7
                 JMP SETCHAR
 
 ROMCHECK	;Compute ROM checksum            
-		LDA #$F8
-                STA PTRPTR+1
-                LDA #$00
-                STA PTRPTR
-                STA CHKSUM
+		LDA #$F0		;Set a pointer to bottom of ROM ($F000).
+                STA CHKPTR+1		; (working our way up the pages but down
+                LDA #$00		;  the bytes)
+                STA CHKPTR
+                STA CHKSUM		;Initialize working variable containing
+                			; checksum.
 
-		LDX #$10		;Skip first 16 bytes (config vars)
-		
-CHKSUMLOOP1     CLC
-                LDA (PTRPTR),X
+		LDY #$10		;Skip first 16 bytes (config vars).
+
+		CLC			;Prepare carry flag for math.
                 
-                EOR CHKSUM		;CRC8
+CHKSUMLOOP1     LDA (CHKPTR),Y		;Get a ROM byte ...
+                
+                EOR CHKSUM		;Perform CRC8 on it.
                 STA CHKSUM
                 ASL
                 BCC UP1
@@ -1982,27 +2033,53 @@ UP1		EOR CHKSUM
 UP2		EOR CHKSUM
 		STA CHKSUM
                 
-                INX                
+                INY                	;... and loop through each byte in page.
                 BNE CHKSUMLOOP1
-		                
-                LDX #$00                
-                INC PTRPTR+1
-                BNE CHKSUMLOOP1
-
-		LDX #CC
-                LDA CHKSUM
-                JSR SVCENT
+		                	;OK, done with that page, next one?
+                LDY #$00    		; (starting on new page - set index to 0)
                 
-                LDA CHKSUM
-                CMP GOOD
+                INC CHKPTR+1		;Increment page (high byte) of pointer.
+                BNE CHKSUMLOOP1		;Keep going until high byte wraps FF->00.
+
+					
+		LDX #CC			;Computed checksum is now in CHKSUM
+                LDA CHKSUM		; ... so, let's display it.
+                JSR SVCENT		;SVCENT sets up display and converts .A
+                			; to a graphical decimal number.
+                            
+                LDA CHKSUM		;Moment of truth: Is the checksum right?
+                CMP GOOD		;Compare against stored known good value
+                			; in ROM config table.
                 BEQ ROMCHECKX
 		
-                LDY #4
-                LDX #CE
+                LDY #4			;Put a big E on the display if not matching
+                LDX #CE			; known good value.
                 JSR SETCHAR
 ROMCHECKX       
-                JMP MAIN
-	
+                JMP MAIN		;Jump to main loop.
+
+;------------------------------------------------------------------------------
+		;*** Sound data
+                ;*** Must be page aligned!
+		org $FD00
+                
+SNDTABL		.byte <SOUND0,<SOUND1,<SOUND2,<SOUND3,<SOUND4,<SOUND5,<SOUND6		
+SNDTABH		.byte >SOUND0,>SOUND1,>SOUND2,>SOUND3,>SOUND4,>SOUND5,>SOUND6
+		;Bad move
+SOUND0		.byte 8, 6,8, 0
+		;P1 move
+SOUND1		.byte 4, 6,2, 3, 7,2, 0
+		;P2 move
+SOUND2		.byte 2, 6,2, 1, 7,2, 0
+		;Win
+SOUND3		.byte 8,10,3, 6,10,4, 4,10,5, 2,10,6, 1,10,3, 0
+		;Draw
+SOUND4		.byte 1,12,6, 4,10,5, 5,12,6, 9,10,5, 1,12,4, 0                
+		;Move piece
+SOUND5		.byte 2,12,2, 1,12,1, 0 
+		;End game
+SOUND6		.byte 2,13,3, 3,13,4, 4,13,5, 5,13,7, 6,13,10, 0             
+
 ;------------------------------------------------------------------------------
 		;*** Graphics
 		;All characters except TOPX and TOPO are assumed to be 7 lines
@@ -2114,7 +2191,7 @@ CHAR9		.byte %01111100
 CHARX		.byte %11000011
 		.byte %11100111
 		.byte %01111110
-		.byte %00111100
+		.byte %00111100 
 		.byte %01111110
 		.byte %11100111
 		.byte %11000011
@@ -2145,33 +2222,6 @@ CHARWIN		.byte %11101010
 		.byte %01111100
 		.byte %01010100
 		.byte %01010100
-
-		;TIC (for title screen)
-CHARTIC		.byte %00000111
-		.byte %00111100
-		.byte %00010100
-		.byte %01010111
-		.byte %01111000
-		.byte %01000000
-		.byte %11100000
-
-		;TAC (for title screen)
-CHARTAC		.byte %00000111
-		.byte %00101100
-		.byte %00111100
-		.byte %01101111
-		.byte %01111000
-		.byte %01000000
-		.byte %11100000
-
-		;TOE (for title screen)
-CHARTOE		.byte %00000111
-		.byte %00111100
-		.byte %00101111
-		.byte %01101100
-		.byte %01111111
-		.byte %01000000
-		.byte %11100000
 
 		;(Version number; for title screen)
 CHARVER		.byte %00110110
@@ -2329,7 +2379,7 @@ CHARTABL
 		.byte <CHAR6,<CHAR7,<CHAR8,<CHAR9
 		.byte <CHARX,<CHARO
 		.byte <CHARTIE,<CHARWIN
-		.byte <CHARTIC,<CHARTAC,<CHARTOE
+		.byte <CHARSPC,<CHARSPC,<CHARSPC
 		.byte <CHARVER,<CHARSPC,<CHARSEL
 		.byte <CHARP1,<CHARP2,<CHARCPU,<CHARVS
 		.byte <CHAR10
@@ -2339,7 +2389,7 @@ CHARTABH
 		.byte >CHAR6,>CHAR7,>CHAR8,>CHAR9
 		.byte >CHARX,>CHARO
 		.byte >CHARTIE,>CHARWIN
-		.byte >CHARTIC,>CHARTAC,>CHARTOE
+		.byte >CHARSPC,>CHARSPC,>CHARSPC
 		.byte >CHARVER,>CHARSPC,>CHARSEL
 		.byte >CHARP1,>CHARP2,>CHARCPU,>CHARVS
 		.byte >CHAR10
@@ -2348,11 +2398,11 @@ CHARTABH
                 ;Character equates
 C0	= 0
 CXCHAR  = 10
-CTIE	= 12
+;CTIE	= 12
 CWIN	= 13
-CTIC	= 14
-CTAC	= 15
-CTOE	= 16
+;CTIC	= 14
+;CTAC	= 15
+;CTOE	= 16
 CVER	= 17
 CSPC	= 18
 CSEL	= 19
@@ -2436,9 +2486,10 @@ WINTAB3		.byte 2,5,8, 6,7,8, 8,6, 1,0, 4,3, 7,6, 3,0, 4,1, 5,2, 4,0, 4,2
                 ;One of these masks is applied to the color variables (set
 		; each frame) depending on the position of the color/B-W
 		; switch.
-                ;Because in 2022 we want to properly support this switch. :P
+                ;Because in 2024 we want to properly support this switch. :P
 CMMASK		.byte %00001111,%11111111
 
+		;LFSR PRNG seeds
 RNDSEEDS	.byte 29,43,45,77,95,99,101,105,113,135,141,169,195,207,231,245
 
 ;------------------------------------------------------------------------------
@@ -2449,4 +2500,3 @@ RNDSEEDS	.byte 29,43,45,77,95,99,101,105,113,135,141,169,195,207,231,245
 INMI  		.word JUSTRTI
 IRESET		.word RESET
 IIRQBRK		.word BRKH
-

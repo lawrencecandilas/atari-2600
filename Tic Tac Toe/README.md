@@ -27,7 +27,7 @@ But...
 
 Recently, while finding out Javascript/WASM is now powerful enough that
 there are things like Emscripten, I ran into 8bitworkshop
-(https://8bitworkshop.com/) and saw that it ncluded a rather nice IDE for
+(https://8bitworkshop.com/) and saw that it included a rather nice IDE for
 the 2600, including the Javatari emulator.
 
 I was *especially pleased* to see that I could paste my old code right in
@@ -43,7 +43,8 @@ If you don't know how to play Tic-Tac-Toe:
 
 - You are either X or O, X always moves first.
 - You and the other player take turns placing your symbol in one of 9 squares on a 3x3 grid.  
-- If you get 3 in a row, you win a point.  
+- If you get 3 in a row, you win a point and get to be X the next round.
+- 
 - If all 9 squares get full with neither player getting 3 in a row, the match is a draw and is replayed until someone does get 3 in a row.
 - First player to get 10 or more points wins the game.
 
@@ -64,7 +65,13 @@ Ties cause the current match to be replayed, until someone wins.
 
 ## Controls
 
-Tic-Tac-Toe uses the joystick controller.  Paddles and other controllers are not supported.  When it is your turn, a blinking cursor will display.  Move by moving the joystick in the desired direction.  Press the joystick button to choose your space.  You can't move in a space where an X or O already exists.
+Tic-Tac-Toe uses the joystick controller.  
+
+Paddles and other controllers other than the standard joystick are not supported.  
+
+When it is your turn, a blinking cursor will display.  Move by moving the joystick in the desired direction.  Press the joystick button to choose your space.  You can't move in a space where an X or O already exists.
+
+The CPU vs. CPU variation is non-interactive.  You can interrupt the CPU playing itself by pressing GAME SELECT or GAME START.
 
 The COLOR/B-W switch is supported.
 
@@ -72,13 +79,19 @@ The LEFT difficulty will change who is X and O to start.  If a game is in progre
 
 The RIGHT difficulty does nothing.
 
-If you hold down GAME SELECT and GAME START while turning the power on, the game will enter a blue "C" ROM checksum screen.  If the checksum does not match the internal "good" value, an E will display.  Power cycle the Atari 2600 without holding the switches down to resume normal play.
+### ROM Checksum Screen
+
+If you hold down GAME SELECT and GAME START together while turning the power on, the game will enter a blue "C" ROM checksum screen.  If you see an E, it means the computed checksum (shown on the screen) doesn't match the internally stored good value.  
+
+Power cycle the Atari 2600 without holding the switches down to resume normal play.
 
 ## Strategy
 
 At the beginning of each match, currently the CPU "intelligence" is chosen randomly.  
 
 Sometimes the CPU will be really stupid and sometimes the CPU will be really smart.
+
+Taking the center square if open is typically a good move.
 
 ## Blue Screen
 
